@@ -7,60 +7,6 @@ using System.Windows.Forms;
 
 namespace OpenD
 {
-    class DarkColors : ProfessionalColorTable
-    {
-        public override Color MenuItemSelected { get { return Theme.Hover; } }
-        public override Color MenuItemBorder { get { return Theme.Hover; } }
-        public override Color ToolStripDropDownBackground { get { return Theme.Panel; } }
-        public override Color ImageMarginGradientBegin { get { return Theme.Panel; } }
-        public override Color ImageMarginGradientMiddle { get { return Theme.Panel; } }
-        public override Color ImageMarginGradientEnd { get { return Theme.Panel; } }
-        public override Color MenuBorder { get { return Theme.Line; } }
-        public override Color SeparatorDark { get { return Theme.Line; } }
-        public override Color SeparatorLight { get { return Theme.Line; } }
-    }
-
-    static class Ui
-    {
-        public static ContextMenuStrip Menu()
-        {
-            ContextMenuStrip m = new ContextMenuStrip();
-            m.Renderer = new ToolStripProfessionalRenderer(new DarkColors());
-            m.BackColor = Theme.Panel;
-            m.ForeColor = Theme.Text;
-            m.Font = new Font("Segoe UI", 9f);
-            m.ShowImageMargin = false;
-            return m;
-        }
-
-        public static ToolStripMenuItem Add(ContextMenuStrip m, string text, EventHandler click)
-        {
-            ToolStripMenuItem i = new ToolStripMenuItem(text);
-            i.ForeColor = Theme.Text;
-            if (click != null) i.Click += click;
-            m.Items.Add(i);
-            return i;
-        }
-
-        public static Button Btn(string text, EventHandler click)
-        {
-            Button b = new Button();
-            b.Text = text;
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderColor = Theme.Line;
-            b.FlatAppearance.MouseOverBackColor = Theme.Hover;
-            b.FlatAppearance.MouseDownBackColor = Theme.Line;
-            b.BackColor = Theme.Panel;
-            b.ForeColor = Theme.Text;
-            b.Font = new Font("Segoe UI", 9f);
-            b.AutoSize = true;
-            b.Padding = new Padding(6, 2, 6, 2);
-            b.Cursor = Cursors.Hand;
-            b.Click += click;
-            return b;
-        }
-    }
-
     class MainWindow : Form
     {
         readonly Engine eng;
@@ -71,36 +17,35 @@ namespace OpenD
         readonly Action grab;
         public bool Quitting;
 
-        Button qBtn, cBtn;
+        readonly Toolbar bar = new Toolbar();
 
-        public MainWindow(Engine e, Settings s, Action grabClipboard, Action openSettings)
+        public MainWindow(Engine e, Settings s, Action grabClipboard, Action openSettings, Action toggleHud, Func<bool> hudShown)
         {
             eng = e; cfg = s; grab = grabClipboard;
             Text = "OpenD";
             Icon = Native.MakeIcon();
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
-            Font = new Font("Segoe UI", 9f);
+            Font = Fonts.Body(9f);
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(660, 600);
+            ClientSize = new Size(700, 600);
             MinimumSize = new Size(640, 360);
             KeyPreview = true;
 
-            FlowLayoutPanel top = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top, Height = 48, BackColor = Theme.Bg,
-                Padding = new Padding(10, 8, 0, 0)
-            };
-            top.Controls.Add(Ui.Btn("+ Из буфера", (a, b) => grab()));
-            qBtn = Ui.Btn("", (a, b) => Pick(qBtn, Ytdlp.Qualities, () => cfg.Quality, k => cfg.Quality = k));
-            cBtn = Ui.Btn("", (a, b) => Pick(cBtn, Ytdlp.Containers, () => cfg.Container, k => cfg.Container = k));
-            top.Controls.Add(qBtn);
-            top.Controls.Add(cBtn);
-            top.Controls.Add(Ui.Btn("Папка", (a, b) => OpenFolder()));
-            top.Controls.Add(Ui.Btn("Настройки", (a, b) => openSettings()));
-            RefreshHeader();
+            bar.QualityText = () => Presets.Short(Ytdlp.QualityName(cfg.Quality));
+            bar.ContainerText = () => Presets.Short(Ytdlp.ContainerName(cfg.Container));
+            bar.HudShown = hudShown;
+            bar.Add += () => grab();
+            bar.PickQuality += p => Pick(p, Ytdlp.Qualities, () => cfg.Quality, k => cfg.Quality = k);
+            bar.PickContainer += p => Pick(p, Ytdlp.Containers, () => cfg.Container, k => cfg.Container = k);
+            bar.ToggleHud += () => { toggleHud(); bar.Invalidate(); };
+            bar.OpenFolder += OpenFolder;
+            bar.OpenSettings += openSettings;
+            bar.Build();
             foot.Dock = DockStyle.Bottom;
             foot.Height = 28;
+            foot.UseCompatibleTextRendering = true;
+            foot.Font = Fonts.Body(8.5f);
             foot.ForeColor = Theme.Dim;
             foot.TextAlign = ContentAlignment.MiddleLeft;
             foot.Padding = new Padding(12, 0, 0, 0);
@@ -137,7 +82,7 @@ namespace OpenD
 
             Controls.Add(list);
             Controls.Add(foot);
-            Controls.Add(top);
+            Controls.Add(bar);
 
             KeyDown += (a, k) =>
             {
@@ -201,17 +146,13 @@ namespace OpenD
             else OpenFolder();
         }
 
-        public void RefreshHeader()
-        {
-            qBtn.Text = "Качество: " + Presets.Short(Ytdlp.QualityName(cfg.Quality));
-            cBtn.Text = "Формат: " + Presets.Short(Ytdlp.ContainerName(cfg.Container));
-        }
+        public void RefreshHeader() { bar.Invalidate(); }
 
-        void Pick(Control anchor, string[][] opts, Func<string> cur, Action<string> set)
+        void Pick(Point at, string[][] opts, Func<string> cur, Action<string> set)
         {
             ContextMenuStrip m = Ui.Menu();
-            Presets.Fill(m.Items, opts, cur(), k => { set(k); Store.SaveSettings(cfg); RefreshHeader(); });
-            m.Show(anchor, new Point(0, anchor.Height));
+            Presets.Fill(m.Items, opts, cur(), k => { set(k); Store.SaveSettings(cfg); bar.Invalidate(); });
+            m.Show(bar, at);
         }
 
         protected override void OnHandleCreated(EventArgs e)

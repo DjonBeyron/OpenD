@@ -31,6 +31,10 @@ namespace OpenD
         public long Got;                    // скачано, байт
         public double DoneBase, LastDl, LastTot;
         public string StreamKey;
+        public long RetryAt;                // UTC-тики: до этого момента ждём сеть
+        public int Tries;                   // подряд неудачных попыток из-за сети
+        public int LastTick;                // Environment.TickCount последней строки прогресса
+        public bool Missing;                // готовый файл удалён с диска
 
         public St State { get { return (St)Status; } set { Status = (int)value; } }
     }
@@ -45,18 +49,24 @@ namespace OpenD
         public string Quality = "best";
         public string Container = "auto";
         public bool StartInTray = true; // false — при запуске показывать окно
+        public uint HudMods = 0x0003;   // Ctrl+Alt
+        public int HudKey = 0x48;       // H — показать/скрыть мини-окно
+        public bool HudAuto = true;     // показывать мини-окно при загрузках
+        public string Proxy;            // необязательно: http://host:port
         public string Cookies = "";   // "", "firefox", "edge", "chrome", "brave" или "file" (cookies.txt рядом с настройками)
         public long LastUpdate;
         public bool Seen;
 
-        public string HotkeyText()
+        public string HotkeyText() { return HotkeyText(Mods, Key); }
+
+        public static string HotkeyText(uint mods, int key)
         {
             string s = "";
-            if ((Mods & 2) != 0) s += "Ctrl+";
-            if ((Mods & 1) != 0) s += "Alt+";
-            if ((Mods & 4) != 0) s += "Shift+";
-            if ((Mods & 8) != 0) s += "Win+";
-            return s + ((System.Windows.Forms.Keys)Key).ToString();
+            if ((mods & 2) != 0) s += "Ctrl+";
+            if ((mods & 1) != 0) s += "Alt+";
+            if ((mods & 4) != 0) s += "Shift+";
+            if ((mods & 8) != 0) s += "Win+";
+            return s + ((System.Windows.Forms.Keys)key).ToString();
         }
     }
 
@@ -133,11 +143,9 @@ namespace OpenD
             try { WriteAtomic(SettingsFile, Js.Serialize(s)); } catch { }
         }
 
-        public static List<Item> LoadQueue()
-        {
-            List<Item> l = Read<List<Item>>(QueueFile);
-            return l ?? new List<Item>();
-        }
+        public static List<Item> LoadQueue() { return Read<List<Item>>(QueueFile) ?? new List<Item>(); }
+
+        public static List<Item> LoadQueueFrom(string path) { return Read<List<Item>>(path) ?? new List<Item>(); }
 
         public static void SaveQueue(IEnumerable<Item> items)
         {

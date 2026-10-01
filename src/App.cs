@@ -12,7 +12,8 @@ namespace OpenD
     // Невидимое окно для горячей клавиши и слежения за буфером обмена.
     class Sink : NativeWindow
     {
-        public event Action Hotkey, Clip;
+        public event Action<int> Hotkey;
+        public event Action Clip;
 
         public Sink()
         {
@@ -21,7 +22,7 @@ namespace OpenD
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == Native.WM_HOTKEY && Hotkey != null) Hotkey();
+            if (m.Msg == Native.WM_HOTKEY && Hotkey != null) Hotkey((int)m.WParam);
             else if (m.Msg == Native.WM_CLIPBOARDUPDATE && Clip != null) Clip();
             base.WndProc(ref m);
         }
@@ -39,6 +40,7 @@ namespace OpenD
                 if (!first) { show.Set(); return; }
                 App.AutoStarted = Array.IndexOf(args, "--autostart") >= 0;
                 Log.Write("=== OpenD запущен, " + Environment.OSVersion + " ===");
+                Fonts.Init();
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -76,8 +78,8 @@ namespace OpenD
         {
             showEvt = showEvent;
             eng = new Engine(cfg);
-            hud = new Hud(eng);
-            win = new MainWindow(eng, cfg, () => Grab(true), OpenSettings);
+            hud = new Hud(eng, cfg);
+            win = new MainWindow(eng, cfg, () => Grab(true), OpenSettings, () => hud.Toggle(), () => hud.IsShown);
             ui = SynchronizationContext.Current;
         }
 
@@ -89,10 +91,12 @@ namespace OpenD
             tray.MouseUp += (s, e) => { if (e.Button == MouseButtons.Left) win.ShowFront(); };
             tray.Visible = true;
 
-            sink.Hotkey += () => Grab(true);
+            sink.Hotkey += id => { if (id == 1) Grab(true); else if (id == 2) hud.Toggle(); };
             sink.Clip += () => Grab(false);
             if (!Native.RegisterHotKey(sink.Handle, 1, cfg.Mods | Native.MOD_NOREPEAT, (uint)cfg.Key))
-                hud.Pop("Горячая клавиша " + cfg.HotkeyText() + " занята — измените в settings.json");
+                hud.Pop("Сочетание " + cfg.HotkeyText() + " занято — выберите другое в настройках");
+            if (!Native.RegisterHotKey(sink.Handle, 2, cfg.HudMods | Native.MOD_NOREPEAT, (uint)cfg.HudKey))
+                hud.Pop("Сочетание " + Settings.HotkeyText(cfg.HudMods, cfg.HudKey) + " занято — выберите другое в настройках");
             SetWatch(cfg.WatchClipboard);
 
             eng.Finished += it => ui.Post(o => hud.Pop(it.State == St.Done
@@ -122,8 +126,12 @@ namespace OpenD
         {
             bool fresh = !Tools.Ready;
             if (fresh) ui.Post(o => hud.Pop(null), null);
-            bool ok = Tools.Ensure(n => { eng.Note = n; });
-            if (!ok) { ui.Post(o => hud.Pop("Нет интернета — компоненты не загружены"), null); return; }
+            // Нет интернета при первом запуске: ждём и пробуем снова, пока компоненты не скачаются.
+            while (!Tools.Ensure(n => { eng.Note = n; }))
+            {
+                eng.Note = "Жду интернет…";
+                Thread.Sleep(20000);
+            }
             if (!fresh && DateTime.UtcNow.Ticks - cfg.LastUpdate > TimeSpan.TicksPerDay)
             {
                 eng.Note = "Обновление yt-dlp…";
@@ -179,6 +187,7 @@ namespace OpenD
             ContextMenuStrip m = Ui.Menu();
             Ui.Add(m, "Открыть", (s, e) => win.ShowFront());
             Ui.Add(m, "Скачать из буфера   " + cfg.HotkeyText(), (s, e) => Grab(true));
+            Ui.Add(m, "Мини-окно: показать / скрыть   " + Settings.HotkeyText(cfg.HudMods, cfg.HudKey), (s, e) => hud.Toggle());
             m.Items.Add(new ToolStripSeparator());
             ToolStripMenuItem w = Ui.Add(m, "Следить за буфером", null);
             w.Checked = cfg.WatchClipboard;
@@ -202,6 +211,27 @@ namespace OpenD
 
         void SetContainer(string k) { cfg.Container = k; Store.SaveSettings(cfg); win.RefreshHeader(); }
 
+        // Переназначение горячей клавиши: пробуем зарегистрировать новое сочетание, при неудаче возвращаем прежнее.
+        bool ApplyKey(int id, uint mods, int key)
+        {
+            uint oldM = id == 1 ? cfg.Mods : cfg.HudMods;
+            int oldK = id == 1 ? cfg.Key : cfg.HudKey;
+            uint otherM = id == 1 ? cfg.HudMods : cfg.Mods;
+            int otherK = id == 1 ? cfg.HudKey : cfg.Key;
+            if (mods == otherM && key == otherK) return false;
+            Native.UnregisterHotKey(sink.Handle, id);
+            if (Native.RegisterHotKey(sink.Handle, id, mods | Native.MOD_NOREPEAT, (uint)key))
+            {
+                if (id == 1) { cfg.Mods = mods; cfg.Key = key; } else { cfg.HudMods = mods; cfg.HudKey = key; }
+                Store.SaveSettings(cfg);
+                tray.Text = "OpenD — " + cfg.HotkeyText();
+                Log.Write("горячая клавиша " + id + ": " + Settings.HotkeyText(mods, key));
+                return true;
+            }
+            Native.RegisterHotKey(sink.Handle, id, oldM | Native.MOD_NOREPEAT, (uint)oldK);
+            return false;
+        }
+
         void OpenSettings()
         {
             SettingsWindow.Hooks h = new SettingsWindow.Hooks
@@ -211,7 +241,9 @@ namespace OpenD
                 SetWatch = SetWatch,
                 Login = Login,
                 Folder = PickFolder,
-                FolderText = () => cfg.Folder
+                FolderText = () => cfg.Folder,
+                ApplyGrabKey = (m, k) => ApplyKey(1, m, k),
+                ApplyHudKey = (m, k) => ApplyKey(2, m, k)
             };
             using (SettingsWindow w = new SettingsWindow(cfg, h)) w.ShowDialog();
             Store.SaveSettings(cfg);
@@ -298,6 +330,7 @@ namespace OpenD
         void Quit()
         {
             Native.UnregisterHotKey(sink.Handle, 1);
+            Native.UnregisterHotKey(sink.Handle, 2);
             if (watching) Native.RemoveClipboardFormatListener(sink.Handle);
             eng.Shutdown();
             Store.SaveSettings(cfg);

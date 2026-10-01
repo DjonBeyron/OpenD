@@ -45,7 +45,9 @@ namespace OpenD
             StringBuilder a = new StringBuilder();
             a.Append("--ignore-config --force-ipv4 --encoding utf-8 --no-playlist --quiet --progress --newline ");
             a.Append("--windows-filenames --no-mtime --retries infinite --fragment-retries infinite ");
-            a.Append("--concurrent-fragments 4 --embed-metadata ");
+            a.Append("--concurrent-fragments 4 --embed-metadata --socket-timeout 20 --extractor-retries 3 ");
+            a.Append("--retry-sleep http:exp=1:30 --retry-sleep fragment:exp=1:30 ");
+            if (!string.IsNullOrEmpty(cfg.Proxy)) a.Append("--proxy ").Append(Q(cfg.Proxy)).Append(' ');
             switch (q)
             {
                 case "mp4": a.Append("-S vcodec:h264,res,acodec:m4a --merge-output-format mp4 "); break;
@@ -121,7 +123,7 @@ namespace OpenD
             double dl = D(p[3]), tot = D(p[4]);
             if (tot <= 0) tot = D(p[5]);
             if (it.StreamKey != null && it.StreamKey != key) it.DoneBase += it.LastTot > 0 ? it.LastTot : it.LastDl;
-            it.StreamKey = key; it.LastDl = dl; it.LastTot = tot;
+            it.StreamKey = key; it.LastDl = dl; it.LastTot = tot; it.LastTick = Environment.TickCount;
             it.Got = (long)(it.DoneBase + dl);
             it.Stage = hasV && hasA ? "Загрузка" : hasV ? "Видео" : "Аудио";
             double pct;

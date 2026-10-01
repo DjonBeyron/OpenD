@@ -13,6 +13,7 @@ namespace OpenD
         public const int WM_CLIPBOARDUPDATE = 0x031D;
         public const uint MOD_NOREPEAT = 0x4000;
 
+        [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
         [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint vk);
         [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr h, int id);
         [DllImport("user32.dll")] public static extern bool AddClipboardFormatListener(IntPtr h);
@@ -74,6 +75,7 @@ namespace OpenD
         public static readonly Color Accent = Color.FromArgb(96, 165, 250);
         public static readonly Color Ok = Color.FromArgb(74, 222, 128);
         public static readonly Color Err = Color.FromArgb(248, 113, 113);
+        public static readonly Color Warn = Color.FromArgb(234, 179, 8);
 
         public static GraphicsPath Round(Rectangle r, int rad)
         {

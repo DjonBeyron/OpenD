@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading;
 
@@ -21,6 +22,8 @@ namespace OpenD
         readonly Dictionary<string, St> halt = new Dictionary<string, St>();
         readonly Settings cfg;
         bool started, closing;
+        System.Threading.Timer retryTimer;
+        readonly string demoFile;
 
         public string Note;                 // состояние компонентов, показывается в HUD
         public event Action Changed;        // изменилась структура очереди / статус
@@ -29,13 +32,65 @@ namespace OpenD
         public Engine(Settings s)
         {
             cfg = s;
-            items = Store.LoadQueue();
+            demoFile = Environment.GetEnvironmentVariable("OPEND_DEMO_QUEUE");   // только для проверки внешнего вида
+            items = demoFile != null ? Store.LoadQueueFrom(demoFile) : Store.LoadQueue();
             foreach (Item it in items)
-                if (it.State == St.Active) { it.State = St.Queued; it.Speed = null; it.Eta = null; }
+            {
+                if (it.State == St.Active && demoFile == null) { it.State = St.Queued; it.Speed = null; it.Eta = null; }
+                if (demoFile != null) { it.LastTick = Environment.TickCount; if (it.RetryAt == 1) it.RetryAt = DateTime.UtcNow.AddSeconds(30).Ticks; continue; }
+                it.RetryAt = 0; it.Missing = false;
+            }
+            NetworkChange.NetworkAvailabilityChanged += (o, e) => { if (e.IsAvailable) NetworkBack(); };
+            NetworkChange.NetworkAddressChanged += (o, e) => NetworkBack();
+            retryTimer = new System.Threading.Timer(o => { lock (gate) if (items.Any(i => i.State == St.Queued && i.RetryAt > 0)) Pump(); }, null, 3000, 3000);
+        }
+
+        // Сеть вернулась — не ждать таймера, сразу пробовать снова.
+        void NetworkBack()
+        {
+            lock (gate)
+            {
+                bool any = false;
+                foreach (Item it in items)
+                    if (it.State == St.Queued && it.RetryAt > 0) { it.RetryAt = 0; any = true; }
+                if (any) { Log.Write("сеть изменилась — повторяю ожидающие загрузки"); Pump(); }
+            }
+        }
+
+        static readonly string[] NetErrors =
+        {
+            "getaddrinfo", "Failed to resolve", "name resolution", "timed out", "Timeout", "Connection reset",
+            "Connection aborted", "Connection refused", "Network is unreachable", "urlopen error", "Unable to download",
+            "Unable to connect", "SSL:", "EOF occurred", "IncompleteRead", "Remote end closed", "Temporary failure",
+            "HTTP Error 5", "Read timed out", "No route to host", "Name or service not known", "WinError 100"
+        };
+
+        static bool IsNetwork(Item it)
+        {
+            if (string.IsNullOrEmpty(it.Error)) return !NetworkInterface.GetIsNetworkAvailable();
+            foreach (string s in NetErrors) if (it.Error.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return false;
+        }
+
+        // Нет сети: загрузка не падает, а ждёт и повторяет (пауза растёт 5, 10 … 60 с; .part-файлы докачиваются).
+        void WaitNetwork(Item it)
+        {
+            lock (gate)
+            {
+                it.Tries++;
+                int delay = Math.Min(60, 5 * it.Tries);
+                it.RetryAt = DateTime.UtcNow.AddSeconds(delay).Ticks;
+                it.State = St.Queued; it.Speed = null; it.Eta = null;
+                Log.Write("[" + it.Id + "] нет сети (" + it.Error + "), повтор через " + delay + " с, попытка " + it.Tries);
+                it.Error = null;
+                Persist();
+                Pump();
+            }
         }
 
         public Item[] Snapshot()
         {
+            if (demoFile != null) foreach (Item d in items) if (d.State == St.Active) d.LastTick = Environment.TickCount;
             lock (gate) return items.ToArray();
         }
 
@@ -78,9 +133,11 @@ namespace OpenD
         {
             lock (gate)
             {
-                if (it.State != St.Failed && it.State != St.Paused && it.State != St.Stopped) return;
+                bool gone = it.State == St.Done && (it.Missing || string.IsNullOrEmpty(it.File) || !File.Exists(it.File));
+                if (it.State != St.Failed && it.State != St.Paused && it.State != St.Stopped && !gone) return;
                 halt.Remove(it.Id);
-                it.State = St.Queued; it.Error = null;
+                if (gone) { it.Percent = 0; it.Got = 0; it.Bytes = 0; it.File = null; it.Missing = false; }   // скачать заново
+                it.State = St.Queued; it.Error = null; it.RetryAt = 0; it.Tries = 0;
                 Persist();
                 Pump();
             }
@@ -123,12 +180,28 @@ namespace OpenD
                 items.Remove(it);
                 Process p;
                 if (procs.TryGetValue(it.Id, out p)) Kill(p);
-                if (withFile && !string.IsNullOrEmpty(it.File))
-                    try { File.Delete(it.File); } catch (Exception e) { Log.Error("удаление файла", e); }
+                if (withFile && !string.IsNullOrEmpty(it.File)) DeleteFile(it.File);
                 if (it.State != St.Done && !wasActive) CleanPartial(it);
                 Persist();
                 Pump();
             }
+        }
+
+        // Файл может быть на секунду занят антивирусом/проводником — пробуем несколько раз, не блокируя интерфейс.
+        static void DeleteFile(string path)
+        {
+            ThreadPool.QueueUserWorkItem(o =>
+            {
+                for (int i = 0; i < 20; i++)
+                {
+                    try { if (File.Exists(path)) File.Delete(path); return; }
+                    catch (Exception e)
+                    {
+                        if (i == 19) Log.Error("удаление файла " + path, e);
+                        Thread.Sleep(500);
+                    }
+                }
+            });
         }
 
         // Удаляет временные файлы недокачанного видео: «… [videoId].f399.mp4.part», «.ytdl» и т.п.
@@ -146,6 +219,7 @@ namespace OpenD
 
         public void Start()
         {
+            if (demoFile != null) return;
             lock (gate) { started = true; Pump(); }
         }
 
@@ -155,13 +229,13 @@ namespace OpenD
             {
                 closing = true;
                 foreach (Process p in procs.Values.ToArray()) Kill(p);
-                Store.SaveQueue(items);
+                if (demoFile == null) Store.SaveQueue(items);
             }
         }
 
         void Persist()
         {
-            Store.SaveQueue(items);
+            if (demoFile == null) Store.SaveQueue(items);
             Action c = Changed;
             if (c != null) c();
         }
@@ -171,7 +245,8 @@ namespace OpenD
             if (!started || closing || !Tools.Ready) return;
             while (items.Count(i => i.State == St.Active) < MaxParallel)
             {
-                Item next = items.FirstOrDefault(i => i.State == St.Queued);
+                long now = DateTime.UtcNow.Ticks;
+                Item next = items.FirstOrDefault(i => i.State == St.Queued && i.RetryAt <= now);
                 if (next == null) break;
                 next.State = St.Active; next.Percent = 0; next.Error = null;
                 next.Got = 0; next.DoneBase = 0; next.StreamKey = null;
@@ -209,6 +284,7 @@ namespace OpenD
                 }
                 if (closing || removed.Contains(it.Id)) return;
                 if (ApplyHalt(it)) return;
+                if (code != 0 && IsNetwork(it)) { WaitNetwork(it); return; }
                 if (code == 0 || retried) break;
                 if (it.Error != null && it.Error.Contains("Failed to decrypt"))
                 {
@@ -237,6 +313,7 @@ namespace OpenD
                 if (code == 0)
                 {
                     it.State = St.Done; it.Percent = 100; it.Speed = null; it.Eta = null; it.Error = null;
+                    it.Tries = 0; it.RetryAt = 0; it.Missing = false;
                     try { if (!string.IsNullOrEmpty(it.File) && File.Exists(it.File)) { it.Bytes = new FileInfo(it.File).Length; it.Ext = Path.GetExtension(it.File).TrimStart('.').ToUpperInvariant(); } }
                     catch { }
                 }
@@ -289,16 +366,22 @@ namespace OpenD
             {
                 p.OutputDataReceived += (s, e) => Ytdlp.Line(it, e.Data);
                 p.ErrorDataReceived += (s, e) => Ytdlp.Line(it, e.Data);
-                lock (gate)
+                it.Error = null;
+                using (Job job = new Job())
                 {
-                    if (closing) return -1;
-                    if (halt.ContainsKey(it.Id) || removed.Contains(it.Id)) return -3;
-                    p.Start();
-                    procs[it.Id] = p;
+                    lock (gate)
+                    {
+                        if (closing) return -1;
+                        if (halt.ContainsKey(it.Id) || removed.Contains(it.Id)) return -3;
+                        p.Start();
+                        job.Add(p);                       // yt-dlp + ffmpeg + deno умирают вместе с задачей
+                        procs[it.Id] = p;
+                    }
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
+                    p.WaitForExit();
+                    job.KillAll();                        // добить потомков: они держат файлы занятыми
                 }
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-                p.WaitForExit();
                 lock (gate) procs.Remove(it.Id);
                 Log.Write("[" + it.Id + "] yt-dlp завершён, код " + p.ExitCode);
                 return p.ExitCode;
@@ -306,3 +389,4 @@ namespace OpenD
         }
     }
 }
+

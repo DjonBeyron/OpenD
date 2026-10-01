@@ -2,23 +2,26 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
-using System.IO;
 
 namespace OpenD
 {
-    // Отрисовка строки загрузки — общая для мини-HUD и окна очереди.
+    // Отрисовка строки очереди. Каждая величина (процент, размер, скорость, время) живёт в своей
+    // колонке фиксированной ширины — при изменении чисел соседние элементы не сдвигаются по X.
     static class Draw
     {
-        static readonly StringFormat Ell = new StringFormat(StringFormatFlags.NoWrap)
+        public const int RowUnits = 64;
+        const int Slots = 4;
+
+        static readonly StringFormat Ell = new StringFormat(StringFormatFlags.NoWrap | StringFormatFlags.NoClip)
         {
             Trimming = StringTrimming.EllipsisCharacter
         };
-        static readonly StringFormat Right = new StringFormat(StringFormatFlags.NoWrap)
-        {
-            Alignment = StringAlignment.Far
-        };
         static readonly Color Bright = Color.FromArgb(246, 246, 250);
-        static readonly Color Muted = Color.FromArgb(150, 150, 160);
+        static readonly Color Muted = Color.FromArgb(142, 142, 152);
+        static Font fTitle, fBody, fBold;
+
+        public static int Slot(float s) { return (int)(28 * s); }
+        public static int Reserve(float s) { return Slot(s) * Slots + (int)(12 * s); }
 
         public static void Setup(Graphics g)
         {
@@ -26,80 +29,113 @@ namespace OpenD
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         }
 
-        // full = добавить строку с форматом («ОРИГИНАЛ · 2160p · AV1 · Opus · MKV»); reserve — место под кнопки справа.
-        public static void Row(Graphics g, Item it, Rectangle r, float s, Font f, Font small, int reserve = 0, bool full = false)
+        public static void Row(Graphics g, Item it, Rectangle r, float s)
         {
-            int pad = (int)(14 * s);
-            int w = r.Width - pad * 2;
-            int statusW = (int)(104 * s);
-            string title = string.IsNullOrEmpty(it.Title) ? it.Url : it.Title;
-            string status; Color sc; Color tc = Theme.Text;
-            string detail = Detail(it, out status, out sc, ref tc);
+            if (fTitle == null) { fTitle = Fonts.Title(10f); fBody = Fonts.Body(8.5f); fBold = Fonts.BodyBold(8.5f); }
+            int pad = (int)(16 * s);
+            int x0 = r.X + pad;
+            int w = r.Right - Reserve(s) - x0;
+            if (w < 40) return;
 
-            using (SolidBrush tb = new SolidBrush(tc))
-            using (SolidBrush sb = new SolidBrush(sc))
-            using (SolidBrush db = new SolidBrush(it.State == St.Active ? Theme.Text : Theme.Dim))
-            {
-                g.DrawString(title, f, tb, new RectangleF(r.X + pad, r.Y, w - statusW, 20 * s), Ell);
-                g.DrawString(status, small, sb, new RectangleF(r.Right - pad - statusW, r.Y + 2 * s, statusW, 18 * s), Right);
-                g.DrawString(detail, small, db, new RectangleF(r.X + pad, r.Y + 28 * s, w - reserve, 16 * s), Ell);
-            }
-            int by = r.Y + (int)(23 * s), bh = Math.Max(2, (int)(3 * s));
-            using (SolidBrush bg = new SolidBrush(Theme.Line))
-                g.FillRectangle(bg, r.X + pad, by, w, bh);
+            string c1 = "", c2 = "", c3 = "", c4 = "";
+            Color k1 = Theme.Dim, titleColor = Theme.Text, k2 = Theme.Dim;
+            bool span = false;                               // c2 растягивается на остаток строки (ошибка, ожидание)
+            Describe(it, ref c1, ref c2, ref c3, ref c4, ref k1, ref titleColor, ref k2, ref span);
+
+            string title = string.IsNullOrEmpty(it.Title) ? it.Url : it.Title;
+            using (SolidBrush tb = new SolidBrush(titleColor))
+                g.DrawString(title, fTitle, tb, new RectangleF(x0, r.Y + 10 * s, w, 22 * s), Ell);
+
+            int by = r.Y + (int)(37 * s), bh = Math.Max(2, (int)(3 * s));
+            using (SolidBrush bg = new SolidBrush(Theme.Line)) g.FillRectangle(bg, x0, by, w, bh);
             double p = it.State == St.Done ? 100 : it.Percent;
             if (p > 0)
-                using (SolidBrush fg = new SolidBrush(it.State == St.Failed ? Theme.Err : it.State == St.Done ? Theme.Ok : it.State == St.Active ? Theme.Accent : Theme.Dim))
-                    g.FillRectangle(fg, r.X + pad, by, (int)(w * Math.Min(100, p) / 100.0), bh);
-            if (full) Tag(g, it, new RectangleF(r.X + pad, r.Y + 48 * s, w - reserve, 16 * s), small);
+                using (SolidBrush fg = new SolidBrush(BarColor(it)))
+                    g.FillRectangle(fg, x0, by, (int)(w * Math.Min(100, p) / 100.0), bh);
+
+            float my = r.Y + 45 * s, mh = 18 * s;
+            Cell(g, c1, k1 == Theme.Accent || it.State == St.Done ? fBold : fBody, k1, x0, my, 74 * s, mh);
+            float x2 = x0 + 80 * s;
+            if (span) { Cell(g, c2, fBody, k2, x2, my, w - 80 * s, mh); return; }
+            Cell(g, c2, fBody, k2, x2, my, 122 * s, mh);
+            Cell(g, c3, fBody, Theme.Dim, x0 + 208 * s, my, 80 * s, mh);
+            Cell(g, c4, fBody, Theme.Dim, x0 + 292 * s, my, 72 * s, mh);
+            Tag(g, it, x0 + 372 * s, my, w - 372 * s, mh);
         }
 
-        static string Detail(Item it, out string status, out Color sc, ref Color tc)
+        static void Cell(Graphics g, string text, Font f, Color c, float x, float y, float w, float h)
         {
-            string progress = it.Size > 0 ? Fmt.Bytes(it.Got) + " / " + Fmt.Bytes(it.Size) : Fmt.Bytes(it.Got);
+            if (string.IsNullOrEmpty(text) || w < 8) return;
+            using (SolidBrush b = new SolidBrush(c))
+                g.DrawString(text, f, b, new RectangleF(x, y, w, h), Ell);
+        }
+
+        static Color BarColor(Item it)
+        {
+            switch (it.State)
+            {
+                case St.Failed: return Theme.Err;
+                case St.Done: return Theme.Ok;
+                case St.Active: return Theme.Accent;
+                default: return Theme.Dim;
+            }
+        }
+
+        static void Describe(Item it, ref string c1, ref string c2, ref string c3, ref string c4,
+            ref Color k1, ref Color title, ref Color k2, ref bool span)
+        {
+            string progress = it.Size > 0 ? Fmt.Bytes(it.Got) + " / " + Fmt.Bytes(it.Size) : (it.Got > 0 ? Fmt.Bytes(it.Got) : "");
             switch (it.State)
             {
                 case St.Active:
-                    status = (it.Stage ?? "Загрузка") + " " + (int)it.Percent + "%"; sc = Theme.Accent;
-                    return Join(Join(it.Got > 0 ? progress : null, it.Speed), it.Eta == null ? null : "ещё " + it.Eta);
+                    bool stalled = it.Got > 0 && Environment.TickCount - it.LastTick > 6000;
+                    c2 = progress;
+                    if (it.Got <= 0) { c1 = "Старт…"; break; }
+                    if (stalled) { c1 = "Ожидание"; k1 = Theme.Warn; c3 = "—"; break; }
+                    c1 = (int)it.Percent + "%"; k1 = Theme.Accent;
+                    c3 = it.Speed; c4 = it.Eta == null ? "" : "ещё " + it.Eta;
+                    break;
                 case St.Done:
-                    status = "Готово"; sc = Theme.Ok; tc = Bright;       // готовые ярче скачиваемых и ожидающих
+                    title = Bright;                           // готовые ярче скачиваемых и ожидающих
+                    if (it.Missing) { c1 = "Удалён"; c2 = "файла нет на диске"; span = true; title = Muted; break; }
+                    c1 = "Готово"; k1 = Theme.Ok;
                     long b = it.Bytes > 0 ? it.Bytes : it.Size;
-                    return b > 0 ? Fmt.Bytes(b) : "Сохранено";
+                    c2 = b > 0 ? Fmt.Bytes(b) : "";
+                    break;
                 case St.Failed:
-                    status = "Ошибка"; sc = Theme.Err; tc = Muted; return it.Error ?? "";
+                    title = Muted; c1 = "Ошибка"; k1 = Theme.Err; c2 = it.Error ?? ""; span = true; break;
                 case St.Paused:
-                    status = "Пауза " + (int)it.Percent + "%"; sc = Theme.Dim; tc = Muted;
-                    return Join("Приостановлено", it.Got > 0 ? progress : null);
+                    title = Muted; c1 = "Пауза"; c2 = progress; break;
                 case St.Stopped:
-                    status = "Остановлено"; sc = Theme.Dim; tc = Muted; return "";
+                    title = Muted; c1 = "Остановлено"; break;
                 default:
-                    status = "В очереди"; sc = Theme.Dim; tc = Muted; return "";
+                    title = Muted;
+                    if (it.RetryAt > DateTime.UtcNow.Ticks)
+                    {
+                        c1 = "Нет сети"; k1 = Theme.Warn; span = true;
+                        c2 = "повтор через " + (int)Math.Ceiling(new TimeSpan(it.RetryAt - DateTime.UtcNow.Ticks).TotalSeconds) + " с";
+                    }
+                    else c1 = "В очереди";
+                    break;
             }
         }
 
-        static void Tag(Graphics g, Item it, RectangleF rect, Font small)
+        // «ОРИГИНАЛ 1080p AV1 WEBM» — метка и две главные характеристики.
+        static void Tag(Graphics g, Item it, float x, float y, float w, float h)
         {
-            string ext = it.Ext;
-            string rest = Join(it.Fmt, ext);
-            if (string.IsNullOrEmpty(rest)) rest = Ytdlp.QualityName(it.Quality);
-            float x = rect.X;
+            if (w < 70) return;
+            string[] parts = (it.Fmt ?? "").Split(new[] { " · " }, StringSplitOptions.RemoveEmptyEntries);
+            string rest = string.Join(" ", parts, 0, Math.Min(2, parts.Length));
+            if (!string.IsNullOrEmpty(it.Ext)) rest = (rest + " " + it.Ext).Trim();
+            if (rest.Length == 0) rest = Presets.Short(Ytdlp.QualityName(it.Quality));
             if (it.Original)
-                using (Font bold = new Font(small, FontStyle.Bold))
+            {
                 using (SolidBrush ab = new SolidBrush(Theme.Accent))
-                {
-                    g.DrawString("ОРИГИНАЛ", bold, ab, x, rect.Y);
-                    x += g.MeasureString("ОРИГИНАЛ", bold).Width - 4;
-                    rest = " · " + rest;
-                }
-            using (SolidBrush db = new SolidBrush(Theme.Dim))
-                g.DrawString(rest, small, db, new RectangleF(x, rect.Y, Math.Max(10, rect.Right - x), rect.Height), Ell);
-        }
-
-        static string Join(string a, string b)
-        {
-            if (string.IsNullOrEmpty(a)) return b ?? "";
-            return string.IsNullOrEmpty(b) ? a : a + " · " + b;
+                    g.DrawString("ОРИГИНАЛ", fBold, ab, x, y);
+                float ow = g.MeasureString("ОРИГИНАЛ", fBold).Width + 2;
+                x += ow; w -= ow;
+            }
+            Cell(g, rest, fBody, Theme.Dim, x, y, w, h);
         }
     }
 }
