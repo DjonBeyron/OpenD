@@ -81,7 +81,7 @@ namespace OpenD
             for (int i = 0; i < 4; i++)
             {
                 Act? a = SlotAct(item, i);
-                if (a != null && SlotRect(i, top).Contains(p)) { act = a.Value; slot = i; return true; }
+                if (a != null && Rectangle.Inflate(SlotRect(i, top), 1, 9).Contains(p)) { act = a.Value; slot = i; return true; }
             }
             return false;
         }
@@ -166,10 +166,10 @@ namespace OpenD
         {
             Color c = hover ? (a == Act.Delete ? Theme.Err : Theme.Text) : Theme.Dim;
             if (hover)
-                using (GraphicsPath gp = Theme.Round(r, (int)(6 * K)))
+                using (GraphicsPath gp = Theme.Round(r, (int)(5 * K)))
                 using (SolidBrush bg = new SolidBrush(Theme.Hover)) g.FillPath(bg, gp);
             Ic ic = a == Act.Folder ? Ic.Folder : a == Act.Pause ? Ic.Pause : a == Act.Resume ? Ic.Play : a == Act.Stop ? Ic.Stop : Ic.Close;
-            Icons.Draw(g, ic, r, c);
+            Icons.Draw(g, ic, r, c, a == Act.Delete ? 33 : 24);       // крестик мельче остальных значков
         }
     }
 }

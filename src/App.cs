@@ -269,6 +269,7 @@ namespace OpenD
             ToolStripMenuItem root = new ToolStripMenuItem("Cookies (вход в YouTube)");
             root.ForeColor = Theme.Text;
             root.DropDown.BackColor = Theme.Panel;
+            root.DropDown.Font = Fonts.Gdi(9f);
             root.DropDown.ForeColor = Theme.Text;
             ((ToolStripDropDownMenu)root.DropDown).ShowImageMargin = false;
             ((ToolStripDropDownMenu)root.DropDown).Renderer = new ToolStripProfessionalRenderer(new DarkColors());

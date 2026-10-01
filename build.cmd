@@ -9,8 +9,8 @@ if not exist dist mkdir dist
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
   /r:lib\Microsoft.Web.WebView2.Core.dll /r:lib\Microsoft.Web.WebView2.WinForms.dll ^
   /resource:assets\fonts\Montserrat-Medium.ttf,OpenD.Montserrat-Medium.ttf ^
-  /resource:assets\fonts\Comfortaa-Regular.ttf,OpenD.Comfortaa-Regular.ttf ^
-  /resource:assets\fonts\Comfortaa-Bold.ttf,OpenD.Comfortaa-Bold.ttf ^
+  /resource:assets\fonts\Montserrat-Regular.ttf,OpenD.Montserrat-Regular.ttf ^
+  /resource:assets\fonts\Montserrat-SemiBold.ttf,OpenD.Montserrat-SemiBold.ttf ^
   src\*.cs
 if errorlevel 1 (echo BUILD FAILED & exit /b 1)
 copy /y lib\*.dll dist\ >nul

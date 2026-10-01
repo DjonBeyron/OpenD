@@ -24,6 +24,7 @@ namespace OpenD
             ToolStripDropDownMenu dd = (ToolStripDropDownMenu)root.DropDown;
             dd.BackColor = Theme.Panel;
             dd.ForeColor = Theme.Text;
+            dd.Font = Fonts.Gdi(9f);
             dd.ShowImageMargin = false;
             dd.Renderer = new ToolStripProfessionalRenderer(new DarkColors());
             root.DropDownItems.Add(new ToolStripMenuItem("…"));

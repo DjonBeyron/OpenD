@@ -9,9 +9,10 @@ namespace OpenD
     // Все значки рисуются фигурами: без картинок и шрифтов с иконками, чёткие на любом DPI.
     static class Icons
     {
-        public static void Draw(Graphics g, Ic ic, Rectangle slot, Color c)
+        // insetPct — отступ значка от краёв слота в процентах (больше отступ — мельче значок).
+        public static void Draw(Graphics g, Ic ic, Rectangle slot, Color c, int insetPct = 30)
         {
-            int m = slot.Width * 30 / 100;                    // внутренний отступ
+            int m = slot.Width * insetPct / 100;              // внутренний отступ
             Rectangle r = Rectangle.Inflate(slot, -m, -m);
             float w = Math.Max(1.4f, slot.Width / 13f);
             using (SolidBrush b = new SolidBrush(c))

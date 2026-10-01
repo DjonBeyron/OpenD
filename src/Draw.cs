@@ -20,7 +20,7 @@ namespace OpenD
         static readonly Color Muted = Color.FromArgb(142, 142, 152);
         static Font fTitle, fBody, fBold;
 
-        public static int Slot(float s) { return (int)(28 * s); }
+        public static int Slot(float s) { return (int)(15 * s); }
         public static int Reserve(float s) { return Slot(s) * Slots + (int)(12 * s); }
 
         public static void Setup(Graphics g)

@@ -4,7 +4,7 @@
 
 A tiny, dark, tray-based YouTube downloader for Windows 10/11. Copy a link, press a hotkey, watch a small HUD in the bottom-right corner. Downloads survive reboots and network drops.
 
-Built on open-source tools: [yt-dlp](https://github.com/yt-dlp/yt-dlp) (downloading), [ffmpeg](https://ffmpeg.org) (merging video and audio), [Deno](https://deno.com) (YouTube's JS challenges) and Microsoft Edge WebView2 (the sign-in window). UI fonts: [Montserrat](https://github.com/JulietaUla/Montserrat) and [Comfortaa](https://github.com/googlefonts/comfortaa) (SIL Open Font License, see `assets/fonts`).
+Built on open-source tools: [yt-dlp](https://github.com/yt-dlp/yt-dlp) (downloading), [ffmpeg](https://ffmpeg.org) (merging video and audio), [Deno](https://deno.com) (YouTube's JS challenges) and Microsoft Edge WebView2 (the sign-in window). UI font: [Montserrat](https://github.com/JulietaUla/Montserrat) (SIL Open Font License, see `assets/fonts`).
 
 ## Download
 
@@ -28,7 +28,7 @@ Optional: **Settings → Watch clipboard** adds links automatically, without the
 
 ## What it can do
 
-- Global hotkeys, tray icon, clipboard pickup, compact minimalist dark UI (Montserrat + Comfortaa).
+- Global hotkeys, tray icon, clipboard pickup, compact minimalist dark UI (Montserrat).
 - Mini HUD: only the title and percent, does not steal focus, appears during downloads and hides itself. Can be disabled or toggled with a hotkey.
 - Queue window with a clean, jitter-free layout: percent, size, speed and ETA sit in fixed columns. Icon toolbar with hover and tooltips.
 - Persistent queue: after a reboot or a crash, downloads resume from where they stopped.

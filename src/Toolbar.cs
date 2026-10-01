@@ -54,7 +54,7 @@ namespace OpenD
 
         void Layout2(Graphics g)
         {
-            int slot = (int)(32 * K), gap = (int)(4 * K), pad = (int)(12 * K), y = (Height - slot) / 2;
+            int slot = (int)(28 * K), gap = (int)(2 * K), pad = (int)(12 * K), y = (Height - slot) / 2;
             int xl = pad, xr = Width - pad;
             foreach (Btn b in items)
             {
@@ -86,7 +86,7 @@ namespace OpenD
                         g.DrawString(b.Label(), font, tb, new RectangleF(b.Rect.X + 10 * K, b.Rect.Y, b.Rect.Width - 20 * K, b.Rect.Height), sf);
                     Icons.Draw(g, Ic.Chevron, new Rectangle(b.Rect.Right - (int)(22 * K), b.Rect.Y, (int)(20 * K), b.Rect.Height), c);
                 }
-                else Icons.Draw(g, b.Dynamic != null ? b.Dynamic() : b.Icon, b.Rect, c);
+                else Icons.Draw(g, b.Dynamic != null ? b.Dynamic() : b.Icon, b.Rect, c, 34);
             }
             using (Pen p = new Pen(Theme.Line)) g.DrawLine(p, 0, Height - 1, Width, Height - 1);
         }

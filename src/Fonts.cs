@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Text;
 using System.IO;
@@ -7,12 +8,16 @@ using System.Runtime.InteropServices;
 
 namespace OpenD
 {
-    // Montserrat (заголовки) и Comfortaa (текст, цифры) зашиты в exe как ресурсы.
-    // Если шрифт не загрузился — тихо откатываемся на Segoe UI.
+    // Montserrat (Regular, Medium, SemiBold) зашит в exe как ресурсы и используется везде.
+    // Шрифты регистрируются и для GDI+ (самодельные контролы), и для GDI (меню, кнопки) —
+    // только на время работы процесса. Если не загрузились — тихо откатываемся на Segoe UI.
     static class Fonts
     {
+        [DllImport("gdi32.dll")]
+        static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, [In] ref uint pcFonts);
+
         static readonly PrivateFontCollection Pfc = new PrivateFontCollection();
-        static FontFamily montserrat, comfortaa;
+        static readonly Dictionary<string, FontFamily> Fam = new Dictionary<string, FontFamily>();
 
         public static void Init()
         {
@@ -30,31 +35,38 @@ namespace OpenD
                         IntPtr mem = Marshal.AllocCoTaskMem(data.Length);     // должен жить до конца процесса
                         Marshal.Copy(data, 0, mem, data.Length);
                         Pfc.AddMemoryFont(mem, data.Length);
+                        uint n = 0;
+                        AddFontMemResourceEx(mem, (uint)data.Length, IntPtr.Zero, ref n);
                     }
                 }
                 catch (Exception e) { Log.Error("шрифт " + name, e); }
             }
-            foreach (FontFamily f in Pfc.Families)
-            {
-                if (f.Name.StartsWith("Montserrat")) montserrat = montserrat ?? f;
-                else if (f.Name.StartsWith("Comfortaa")) comfortaa = comfortaa ?? f;
-            }
-            Log.Write("шрифты: Montserrat=" + (montserrat != null) + ", Comfortaa=" + (comfortaa != null));
+            foreach (FontFamily f in Pfc.Families) Fam[f.Name] = f;
+            Log.Write("шрифты: " + string.Join(", ", new List<string>(Fam.Keys).ToArray()));
         }
 
-        static Font Make(FontFamily f, float pt, FontStyle st)
+        static Font Make(string family, float pt)
         {
             try
             {
-                if (f != null && f.IsStyleAvailable(st)) return new Font(f, pt, st, GraphicsUnit.Point);
-                if (f != null) return new Font(f, pt, f.IsStyleAvailable(FontStyle.Regular) ? FontStyle.Regular : st, GraphicsUnit.Point);
+                FontFamily f;
+                if (Fam.TryGetValue(family, out f)) return new Font(f, pt, FontStyle.Regular, GraphicsUnit.Point);
             }
             catch { }
-            return new Font("Segoe UI", pt, st, GraphicsUnit.Point);
+            return new Font("Segoe UI", pt, FontStyle.Regular, GraphicsUnit.Point);
         }
 
-        public static Font Title(float pt) { return Make(montserrat, pt, FontStyle.Regular); }
-        public static Font Body(float pt) { return Make(comfortaa, pt, FontStyle.Regular); }
-        public static Font BodyBold(float pt) { return Make(comfortaa, pt, FontStyle.Bold); }
+        public static Font Title(float pt) { return Make("Montserrat Medium", pt); }
+        public static Font Body(float pt) { return Make("Montserrat", pt); }
+        public static Font BodyBold(float pt) { return Make("Montserrat SemiBold", pt); }
+
+        // Для меню и обычных контролов (GDI): берём системно зарегистрированный Montserrat, если он доступен.
+        public static Font Gdi(float pt)
+        {
+            Font f = new Font("Montserrat", pt, FontStyle.Regular, GraphicsUnit.Point);
+            if (f.Name == "Montserrat") return f;
+            f.Dispose();
+            return new Font("Segoe UI", pt, FontStyle.Regular, GraphicsUnit.Point);
+        }
     }
 }

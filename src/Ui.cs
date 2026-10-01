@@ -21,14 +21,14 @@ namespace OpenD
     {
         static ToolTip tip;
 
-        // Меню рисует система (GDI), поэтому здесь Segoe UI; остальной интерфейс — Montserrat/Comfortaa.
+        // Меню рисует система (GDI): берём Montserrat, зарегистрированный на время работы процесса.
         public static ContextMenuStrip Menu()
         {
             ContextMenuStrip m = new ContextMenuStrip();
             m.Renderer = new ToolStripProfessionalRenderer(new DarkColors());
             m.BackColor = Theme.Panel;
             m.ForeColor = Theme.Text;
-            m.Font = new Font("Segoe UI", 9f);
+            m.Font = Fonts.Gdi(9f);
             m.ShowImageMargin = false;
             return m;
         }
