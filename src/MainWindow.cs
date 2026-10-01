@@ -22,7 +22,7 @@ namespace OpenD
         public MainWindow(Engine e, Settings s, Action grabClipboard, Action openSettings, Action toggleHud, Func<bool> hudShown)
         {
             eng = e; cfg = s; grab = grabClipboard;
-            Text = "OpenD";
+            Text = "OpenD " + AppInfo.Version;
             Icon = Native.MakeIcon();
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;

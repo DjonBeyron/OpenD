@@ -21,7 +21,7 @@ namespace OpenD
 
         public SettingsWindow(Settings cfg, Hooks h)
         {
-            Text = "OpenD — настройки";
+            Text = "OpenD " + AppInfo.Version + " — настройки";
             Icon = Native.MakeIcon();
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
