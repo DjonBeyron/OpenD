@@ -26,8 +26,29 @@ namespace OpenD
         public static void ShowOnce(Action<string> onDone)
         {
             if (current != null && !current.IsDisposed) { current.Activate(); return; }
-            current = new LoginWindow(onDone);
-            current.Show();
+            try
+            {
+                current = new LoginWindow(onDone);
+                current.Show();
+            }
+            catch (Exception e)   // например, нет WebView2Loader.dll рядом с exe или повреждён Runtime
+            {
+                Log.Error("окно входа", e);
+                current = null;
+                onDone(Explain(e));
+            }
+        }
+
+        public const string RuntimeUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+
+        public static string Explain(Exception e)
+        {
+            if (e is WebView2RuntimeNotFoundException)
+                return "Не найден Microsoft Edge WebView2 Runtime — без него окно входа не открывается.\n\nУстановите его (Evergreen Bootstrapper): " + RuntimeUrl +
+                       "\n\nПроще: поставьте OpenD через OpenD-Setup.exe, он делает это сам.";
+            if (e is DllNotFoundException || e is System.IO.FileNotFoundException || e is BadImageFormatException)
+                return "Не найден файл WebView2 (WebView2Loader.dll / Microsoft.Web.WebView2.*.dll) рядом с OpenD.exe. Распакуйте архив целиком или поставьте OpenD-Setup.exe.\n\n" + e.Message;
+            return "Не удалось открыть окно входа: " + e.Message + "\n\nПодробности: " + Log.Path;
         }
 
         LoginWindow(Action<string> onDone)
@@ -65,14 +86,23 @@ namespace OpenD
             try
             {
                 await wv.EnsureCoreWebView2Async(null);
+                Log.Write("WebView2 " + CoreWebView2Environment.GetAvailableBrowserVersionString());
+                wv.CoreWebView2.NavigationCompleted += (s, a) =>
+                {
+                    if (!a.IsSuccess)
+                    {
+                        Log.Write("вход: страница не открылась, " + a.WebErrorStatus);
+                        hint.Text = "Страница Google не открывается (" + a.WebErrorStatus + "). Проверьте интернет/VPN и нажмите F5.";
+                        hint.ForeColor = Theme.Err;
+                    }
+                };
                 wv.CoreWebView2.Navigate(LoginUrl);
+                TopMost = true; Activate(); TopMost = false;
             }
             catch (Exception e)
             {
                 Log.Error("WebView2", e);
-                string msg = e is WebView2RuntimeNotFoundException
-                    ? "Не найден компонент Microsoft Edge WebView2 Runtime. Установите его с microsoft.com (WebView2 Runtime)."
-                    : "Не удалось открыть окно входа: " + e.Message;
+                string msg = Explain(e);
                 Close();
                 done(msg);
             }

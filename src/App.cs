@@ -272,7 +272,7 @@ namespace OpenD
         {
             LoginWindow.ShowOnce(err =>
             {
-                if (err != null) { MessageBox.Show(err, "OpenD"); return; }
+                if (err != null) { MessageBox.Show(err, "OpenD — вход в YouTube", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
                 cfg.Cookies = "file";
                 Store.SaveSettings(cfg);
                 tray.ContextMenuStrip = BuildMenu();
