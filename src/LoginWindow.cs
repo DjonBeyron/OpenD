@@ -125,6 +125,10 @@ namespace OpenD
             try
             {
                 int n; bool login;
+                hint.Text = "Сохраняю вход…"; hint.ForeColor = Theme.Dim;
+                // YouTube «вращает» cookies, пока открыта его страница, и выгруженные раньше становятся недействительными
+                // (yt-dlp тогда пишет «не авторизован»). Уходим на нейтральную страницу и только потом забираем cookies.
+                await GoNeutral();
                 List<CoreWebView2Cookie> all = await Collect();
                 n = Write(all, out login);
                 Log.Write("cookies: экспортировано " + n + ", вход выполнен: " + login);
@@ -143,6 +147,20 @@ namespace OpenD
                 hint.Text = "Ошибка: " + e.Message;
                 hint.ForeColor = Theme.Err;
             }
+        }
+
+        async System.Threading.Tasks.Task GoNeutral()
+        {
+            var tcs = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            EventHandler<CoreWebView2NavigationCompletedEventArgs> h = (s, a) => tcs.TrySetResult(a.IsSuccess);
+            wv.CoreWebView2.NavigationCompleted += h;
+            try
+            {
+                wv.CoreWebView2.Navigate("https://www.youtube.com/robots.txt");
+                await System.Threading.Tasks.Task.WhenAny(tcs.Task, System.Threading.Tasks.Task.Delay(8000));
+            }
+            finally { wv.CoreWebView2.NavigationCompleted -= h; }
+            await System.Threading.Tasks.Task.Delay(500);
         }
 
         async System.Threading.Tasks.Task<List<CoreWebView2Cookie>> Collect()

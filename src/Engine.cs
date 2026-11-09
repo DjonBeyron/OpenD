@@ -299,9 +299,12 @@ namespace OpenD
                 }
                 if (NeedsLogin(it.Error))
                 {
+                    Log.Write("[" + it.Id + "] требуется вход, cookies=" + (cfg.Cookies ?? "") + ", ответ: " + it.Error);
                     it.Error = string.IsNullOrEmpty(cfg.Cookies)
                         ? "YouTube требует вход: трей → «Войти в YouTube…»"
-                        : "YouTube не принял cookies «" + cfg.Cookies + "»: войдите в YouTube в этом браузере или используйте cookies.txt";
+                        : cfg.Cookies == "file"
+                            ? "YouTube не принял сохранённый вход (он мог устареть или аккаунт помечен). Трей → «Сменить аккаунт YouTube…» и войдите заново; при VPN пробуйте без него"
+                            : "YouTube не принял cookies «" + cfg.Cookies + "»: войдите в YouTube в этом браузере или используйте «Войти в YouTube…»";
                     break;
                 }
                 retried = true;                       // частая причина сбоя — устаревший yt-dlp
