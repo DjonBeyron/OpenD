@@ -13,6 +13,8 @@ namespace OpenD
             public Action<bool> SetAutostart;
             public Action<bool> SetWatch;
             public Action Login;
+            public Action Logout;
+            public Action Switch;
             public Action Folder;
             public Func<string> FolderText;
             public Func<uint, int, bool> ApplyGrabKey;      // новое сочетание «скачать из буфера»
@@ -60,6 +62,8 @@ namespace OpenD
             col.Controls.Add(Header("Аккаунт"));
             FlowLayoutPanel row = new FlowLayoutPanel { AutoSize = true, BackColor = Theme.Bg, Margin = new Padding(0) };
             row.Controls.Add(Ui.Btn("Войти в YouTube…", (s, e) => h.Login()));
+            row.Controls.Add(Ui.Btn("Сменить аккаунт…", (s, e) => h.Switch()));
+            row.Controls.Add(Ui.Btn("Выйти", (s, e) => h.Logout()));
             row.Controls.Add(Ui.Btn("Открыть лог", (s, e) => Log.Open()));
             col.Controls.Add(row);
             Controls.Add(col);

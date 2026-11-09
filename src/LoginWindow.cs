@@ -23,6 +23,18 @@ namespace OpenD
         readonly Action<string> done;   // null — успех, иначе текст ошибки
         static LoginWindow current;
 
+        // Выход: удаляем cookies для yt-dlp и профиль встроенного браузера (иначе Google войдёт под прежним аккаунтом).
+        public static bool Logout()
+        {
+            bool ok = true;
+            if (current != null && !current.IsDisposed) { try { current.Close(); } catch { } }
+            try { if (File.Exists(CookieFile)) File.Delete(CookieFile); } catch (Exception e) { Log.Error("удаление cookies", e); ok = false; }
+            try { if (Directory.Exists(Profile)) Directory.Delete(Profile, true); }
+            catch (Exception e) { Log.Error("удаление профиля входа", e); ok = false; }
+            Log.Write("выход из YouTube: " + (ok ? "ok" : "не всё удалено"));
+            return ok;
+        }
+
         public static void ShowOnce(Action<string> onDone)
         {
             if (current != null && !current.IsDisposed) { current.Activate(); return; }

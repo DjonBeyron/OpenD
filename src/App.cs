@@ -218,6 +218,8 @@ namespace OpenD
             Ui.Add(m, "Настройки…", (s, e) => OpenSettings());
             Ui.Add(m, "Папка загрузки…", (s, e) => PickFolder());
             Ui.Add(m, "Войти в YouTube…", (s, e) => Login());
+            Ui.Add(m, "Сменить аккаунт YouTube…", (s, e) => SwitchAccount());
+            Ui.Add(m, "Выйти из YouTube", (s, e) => Logout());
             m.Items.Add(CookieMenu());
             Ui.Add(m, "Открыть лог", (s, e) => Log.Open());
             m.Items.Add(new ToolStripSeparator());
@@ -258,6 +260,8 @@ namespace OpenD
                 SetAutostart = SetAutostart,
                 SetWatch = SetWatch,
                 Login = Login,
+                Logout = Logout,
+                Switch = SwitchAccount,
                 Folder = PickFolder,
                 FolderText = () => cfg.Folder,
                 ApplyGrabKey = (m, k) => ApplyKey(1, m, k),
@@ -266,6 +270,29 @@ namespace OpenD
             using (SettingsWindow w = new SettingsWindow(cfg, h)) w.ShowDialog();
             Store.SaveSettings(cfg);
             tray.ContextMenuStrip = BuildMenu();
+        }
+
+        void Logout()
+        {
+            if (MessageBox.Show("Выйти из YouTube? Сохранённый вход будет удалён, загрузки продолжатся без аккаунта (YouTube может просить подтвердить, что вы не бот).",
+                "OpenD", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            DoLogout();
+            hud.Pop("Вы вышли из YouTube");
+        }
+
+        void DoLogout()
+        {
+            bool ok = LoginWindow.Logout();
+            if (cfg.Cookies == "file") cfg.Cookies = "";
+            Store.SaveSettings(cfg);
+            tray.ContextMenuStrip = BuildMenu();
+            if (!ok) MessageBox.Show("Не всё удалось стереть (файл занят). Закройте окно входа и повторите. Подробности: " + Log.Path, "OpenD");
+        }
+
+        void SwitchAccount()
+        {
+            DoLogout();
+            Login();
         }
 
         void Login()
