@@ -3,6 +3,7 @@ name: Build installer
 on:
   push:
     tags: ['v*']
+    branches: ['claude/**']
   workflow_dispatch:
 
 permissions:
