@@ -200,28 +200,61 @@ namespace OpenD
             cfg.WatchClipboard = on;
         }
 
+        // Подменю в тёмном стиле трея.
+        static ToolStripMenuItem Group(ContextMenuStrip m, string title)
+        {
+            ToolStripMenuItem root = new ToolStripMenuItem(title) { ForeColor = Theme.Text };
+            ToolStripDropDownMenu dd = (ToolStripDropDownMenu)root.DropDown;
+            dd.BackColor = Theme.Panel;
+            dd.ForeColor = Theme.Text;
+            dd.Font = Fonts.Gdi(9f);
+            dd.ShowImageMargin = false;
+            dd.Renderer = new ToolStripProfessionalRenderer(new DarkColors());
+            m.Items.Add(root);
+            return root;
+        }
+
+        static ToolStripMenuItem Sub(ToolStripMenuItem g, string text, EventHandler click)
+        {
+            ToolStripMenuItem i = new ToolStripMenuItem(text) { ForeColor = Theme.Text };
+            if (click != null) i.Click += click;
+            g.DropDownItems.Add(i);
+            return i;
+        }
+
+        // Меню трея по группам: скачивание · параметры загрузки · аккаунт · программа · выход.
         ContextMenuStrip BuildMenu()
         {
             ContextMenuStrip m = Ui.Menu();
-            Ui.Add(m, "Открыть", (s, e) => win.ShowFront());
+            Ui.Add(m, "Открыть окно загрузок", (s, e) => win.ShowFront());
             Ui.Add(m, "Скачать из буфера   " + cfg.HotkeyText(), (s, e) => Grab(true));
-            Ui.Add(m, "Мини-окно: показать / скрыть   " + Settings.HotkeyText(cfg.HudMods, cfg.HudKey), (s, e) => hud.Toggle());
             m.Items.Add(new ToolStripSeparator());
-            ToolStripMenuItem w = Ui.Add(m, "Следить за буфером", null);
+
+            ToolStripMenuItem dl = Group(m, "Загрузка");
+            dl.DropDownItems.Add(Presets.Submenu("Качество", Ytdlp.Qualities, () => cfg.Quality, SetQuality));
+            dl.DropDownItems.Add(Presets.Submenu("Формат (контейнер)", Ytdlp.Containers, () => cfg.Container, SetContainer));
+            Sub(dl, "Папка загрузки…", (s, e) => PickFolder());
+            Sub(dl, "Открыть папку с видео", (s, e) => { try { Directory.CreateDirectory(cfg.Folder); Process.Start("explorer.exe", "\"" + cfg.Folder + "\""); } catch { } });
+            ToolStripMenuItem w = Sub(dl, "Следить за буфером", null);
             w.Checked = cfg.WatchClipboard;
             w.Click += (s, e) => { SetWatch(!watching); w.Checked = watching; Store.SaveSettings(cfg); };
-            m.Items.Add(Presets.Submenu("Качество", Ytdlp.Qualities, () => cfg.Quality, SetQuality));
-            m.Items.Add(Presets.Submenu("Формат (контейнер)", Ytdlp.Containers, () => cfg.Container, SetContainer));
-            ToolStripMenuItem au = Ui.Add(m, "Запускать с Windows", null);
+
+            bool signed = cfg.Cookies == "file" && File.Exists(LoginWindow.CookieFile);
+            ToolStripMenuItem ac = Group(m, signed ? "Аккаунт YouTube  ·  вход выполнен" : "Аккаунт YouTube  ·  не выполнен вход");
+            Sub(ac, "Войти…", (s, e) => Login());
+            Sub(ac, "Сменить аккаунт…", (s, e) => SwitchAccount());
+            Sub(ac, "Выйти", (s, e) => Logout());
+            ac.DropDownItems.Add(new ToolStripSeparator());
+            ac.DropDownItems.Add(CookieMenu());
+
+            ToolStripMenuItem pr = Group(m, "Программа");
+            Sub(pr, "Мини-окно: показать / скрыть   " + Settings.HotkeyText(cfg.HudMods, cfg.HudKey), (s, e) => hud.Toggle());
+            ToolStripMenuItem au = Sub(pr, "Запускать с Windows", null);
             au.Checked = GetAutostart();
             au.Click += (s, e) => { SetAutostart(!GetAutostart()); au.Checked = GetAutostart(); };
+            Sub(pr, "Открыть лог", (s, e) => Log.Open());
+
             Ui.Add(m, "Настройки…", (s, e) => OpenSettings());
-            Ui.Add(m, "Папка загрузки…", (s, e) => PickFolder());
-            Ui.Add(m, "Войти в YouTube…", (s, e) => Login());
-            Ui.Add(m, "Сменить аккаунт YouTube…", (s, e) => SwitchAccount());
-            Ui.Add(m, "Выйти из YouTube", (s, e) => Logout());
-            m.Items.Add(CookieMenu());
-            Ui.Add(m, "Открыть лог", (s, e) => Log.Open());
             m.Items.Add(new ToolStripSeparator());
             Ui.Add(m, "Выход", (s, e) => Quit());
             return m;
@@ -263,6 +296,9 @@ namespace OpenD
                 Logout = Logout,
                 Switch = SwitchAccount,
                 Folder = PickFolder,
+                SetQuality = SetQuality,
+                SetContainer = SetContainer,
+                SignedIn = () => cfg.Cookies == "file" && File.Exists(LoginWindow.CookieFile),
                 FolderText = () => cfg.Folder,
                 ApplyGrabKey = (m, k) => ApplyKey(1, m, k),
                 ApplyHudKey = (m, k) => ApplyKey(2, m, k)

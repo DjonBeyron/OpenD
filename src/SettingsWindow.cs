@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -16,6 +17,9 @@ namespace OpenD
             public Action Logout;
             public Action Switch;
             public Action Folder;
+            public Action<string> SetQuality;
+            public Action<string> SetContainer;
+            public Func<bool> SignedIn;
             public Func<string> FolderText;
             public Func<uint, int, bool> ApplyGrabKey;      // новое сочетание «скачать из буфера»
             public Func<uint, int, bool> ApplyHudKey;       // новое сочетание «показать/скрыть мини-окно»
@@ -31,7 +35,7 @@ namespace OpenD
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false; MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(470, 520);
+            ClientSize = new Size(470, 700);
 
             FlowLayoutPanel col = new FlowLayoutPanel
             {
@@ -54,19 +58,53 @@ namespace OpenD
             col.Controls.Add(KeyRow("Показать / скрыть мини-окно", new HotkeyBox(cfg.HudMods, cfg.HudKey, h.ApplyHudKey)));
 
             col.Controls.Add(Header("Загрузки"));
+            col.Controls.Add(PickRow("Качество", Ytdlp.Qualities, cfg.Quality, v => h.SetQuality(v)));
+            col.Controls.Add(PickRow("Формат (контейнер)", Ytdlp.Containers, cfg.Container, v => h.SetContainer(v)));
             Label folder = Ui.Text(h.FolderText(), true, 9f);
             folder.AutoSize = false; folder.Width = 420; folder.Height = 22;
             col.Controls.Add(folder);
-            col.Controls.Add(Ui.Btn("Изменить папку…", (s, e) => { h.Folder(); folder.Text = h.FolderText(); }));
+            FlowLayoutPanel frow = new FlowLayoutPanel { AutoSize = true, BackColor = Theme.Bg, Margin = new Padding(0) };
+            frow.Controls.Add(Ui.Btn("Изменить папку…", (s, e) => { h.Folder(); folder.Text = h.FolderText(); }));
+            frow.Controls.Add(Ui.Btn("Открыть папку", (s, e) => { try { Process.Start("explorer.exe", "\"" + h.FolderText() + "\""); } catch { } }));
+            col.Controls.Add(frow);
 
-            col.Controls.Add(Header("Аккаунт"));
+            col.Controls.Add(Header("Аккаунт YouTube"));
+            Label st = Ui.Text(h.SignedIn() ? "Вход выполнен" : "Вход не выполнен", true, 9f);
+            st.ForeColor = h.SignedIn() ? Theme.Ok : Theme.Warn;
+            col.Controls.Add(st);
             FlowLayoutPanel row = new FlowLayoutPanel { AutoSize = true, BackColor = Theme.Bg, Margin = new Padding(0) };
-            row.Controls.Add(Ui.Btn("Войти в YouTube…", (s, e) => h.Login()));
-            row.Controls.Add(Ui.Btn("Сменить аккаунт…", (s, e) => h.Switch()));
-            row.Controls.Add(Ui.Btn("Выйти", (s, e) => h.Logout()));
-            row.Controls.Add(Ui.Btn("Открыть лог", (s, e) => Log.Open()));
+            Action refresh = () => { bool on = h.SignedIn(); st.Text = on ? "Вход выполнен" : "Вход не выполнен"; st.ForeColor = on ? Theme.Ok : Theme.Warn; };
+            row.Controls.Add(Ui.Btn("Войти…", (s, e) => { h.Login(); refresh(); }));
+            row.Controls.Add(Ui.Btn("Сменить аккаунт…", (s, e) => { h.Switch(); refresh(); }));
+            row.Controls.Add(Ui.Btn("Выйти", (s, e) => { h.Logout(); refresh(); }));
             col.Controls.Add(row);
+            Timer poll = new Timer { Interval = 1000 };     // вход завершается в другом окне — подхватываем статус
+            poll.Tick += (s, e) => refresh();
+            poll.Start();
+            Disposed += (s, e) => poll.Dispose();
+
+            col.Controls.Add(Header("Диагностика"));
+            col.Controls.Add(Ui.Btn("Открыть лог", (s, e) => Log.Open()));
             Controls.Add(col);
+        }
+
+        static Control PickRow(string label, string[][] opts, string current, Action<string> set)
+        {
+            FlowLayoutPanel row = new FlowLayoutPanel { AutoSize = true, BackColor = Theme.Bg, Margin = new Padding(0, 2, 0, 2) };
+            Label l = Ui.Text(label, false);
+            l.AutoSize = false; l.Width = 175; l.Height = 28; l.TextAlign = ContentAlignment.MiddleLeft;
+            ComboBox cb = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Width = 240,
+                BackColor = Theme.Panel, ForeColor = Theme.Text, Font = Fonts.Body(9f)
+            };
+            int sel = 0;
+            for (int i = 0; i < opts.Length; i++) { cb.Items.Add(opts[i][1]); if (opts[i][0] == current) sel = i; }
+            cb.SelectedIndex = sel;
+            cb.SelectedIndexChanged += (s, e) => set(opts[cb.SelectedIndex][0]);
+            row.Controls.Add(l);
+            row.Controls.Add(cb);
+            return row;
         }
 
         static Label Header(string text)
