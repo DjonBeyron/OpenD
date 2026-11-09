@@ -25,6 +25,7 @@ namespace OpenD
         System.Threading.Timer retryTimer;
         readonly string demoFile;
 
+        public int NoteProgress { get { return Note != null ? Tools.Progress : -1; } }   // полоска в HUD, -1 — без полоски
         public string Note;                 // состояние компонентов, показывается в HUD
         public event Action Changed;        // изменилась структура очереди / статус
         public event Action<Item> Finished; // загрузка завершилась (успех или ошибка)

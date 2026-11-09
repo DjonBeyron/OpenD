@@ -116,6 +116,7 @@ namespace OpenD
             string head = Head();
             int h = Px(10);
             if (head != null) h += Px(18);
+            if (eng.NoteProgress >= 0) h += Px(8);
             h += rows.Count * Px(26);
             if (rows.Count == 0 && head == null) h += Px(18);
             h += Px(2);
@@ -138,6 +139,14 @@ namespace OpenD
                 using (SolidBrush b = new SolidBrush(Theme.Text))
                     g.DrawString(head, fBody, b, new RectangleF(pad, y, w, Px(16)), ell);
                 y += Px(18);
+                int np = eng.NoteProgress;
+                if (np >= 0)
+                {
+                    int bh = Math.Max(3, Px(3));
+                    using (SolidBrush bg = new SolidBrush(Theme.Line)) g.FillRectangle(bg, pad, y, w, bh);
+                    using (SolidBrush fb = new SolidBrush(Theme.Accent)) g.FillRectangle(fb, pad, y, (int)(w * Math.Min(100, np) / 100.0), bh);
+                    y += Px(8);
+                }
             }
             else if (rows.Count == 0)
                 using (SolidBrush b = new SolidBrush(Theme.Dim))

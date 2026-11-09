@@ -14,6 +14,8 @@ namespace OpenD
         public static string Ffmpeg { get { return Path.Combine(Store.Bin, "ffmpeg.exe"); } }
         public static string Deno { get { return Path.Combine(Store.Bin, "deno.exe"); } }
         public static string Proxy;       // из настроек (необязательно)
+        public static int Progress = -1;  // общий прогресс загрузки компонентов, 0..100 (-1 — не идёт)
+        static int stages, stageDone;
         public static string LastError;   // последняя причина сбоя — показывается вместо голого «Жду интернет»
         public static bool Ready { get { return File.Exists(YtDlp) && File.Exists(Ffmpeg); } }
 
@@ -30,8 +32,10 @@ namespace OpenD
                 catch { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; }
                 ServicePointManager.Expect100Continue = false;
                 LastError = null;
+                stages = (File.Exists(YtDlp) ? 0 : 1) + (File.Exists(Ffmpeg) ? 0 : 1) + (File.Exists(Deno) ? 0 : 1);
+                stageDone = 0; Progress = stages > 0 ? 0 : -1;
                 Directory.CreateDirectory(Store.Bin);
-                if (!File.Exists(YtDlp)) Fetch(UrlYtDlp, YtDlp, "yt-dlp", status);
+                if (!File.Exists(YtDlp)) { Fetch(UrlYtDlp, YtDlp, "yt-dlp", status); stageDone++; }
                 if (!File.Exists(Ffmpeg))
                 {
                     string zip = Path.Combine(Store.Bin, "ffmpeg.zip");
@@ -40,6 +44,7 @@ namespace OpenD
                     Unzip(zip, "ffmpeg.exe", Ffmpeg);
                     Unzip(zip, "ffprobe.exe", Path.Combine(Store.Bin, "ffprobe.exe"));
                     File.Delete(zip);
+                    stageDone++;
                 }
                 if (!File.Exists(Deno))
                 {
@@ -50,8 +55,10 @@ namespace OpenD
                         Unzip(zip, "deno.exe", Deno);
                         File.Delete(zip);
                     }
-                    catch (Exception e) { Log.Error("deno", e); }   // без deno часть форматов YouTube может быть недоступна, но загрузка работает
+                    catch (Exception e) { Log.Error("deno", e); }
+                    stageDone++;   // без deno часть форматов YouTube может быть недоступна, но загрузка работает
                 }
+                Progress = -1;
                 return Ready;
             }
             catch (Exception e)
@@ -59,6 +66,7 @@ namespace OpenD
                 Log.Error("загрузка компонентов", e);
                 Exception r = e; while (r.InnerException != null) r = r.InnerException;
                 LastError = r.Message;
+                Progress = -1;
                 status("Не удалось загрузить компоненты: " + r.Message);
                 return false;
             }
@@ -102,7 +110,12 @@ namespace OpenD
                             if (total > 0)
                             {
                                 int pc = (int)(got * 100 / total);
-                                if (pc != last) { last = pc; status("Загрузка " + name + " " + pc + "%"); }
+                                if (pc != last)
+                                {
+                                    last = pc;
+                                    if (stages > 0) Progress = Math.Min(99, (stageDone * 100 + pc) / stages);
+                                    status("Загрузка " + name + " " + pc + "%" + (stages > 1 ? "  (" + Math.Min(stages, stageDone + 1) + "/" + stages + ")" : ""));
+                                }
                             }
                         }
                     }

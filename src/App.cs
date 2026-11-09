@@ -86,7 +86,7 @@ namespace OpenD
         public void Run()
         {
             tray.Icon = Native.MakeIcon();
-            tray.Text = "OpenD — " + cfg.HotkeyText();
+            tray.Text = "OpenD — запуск…";
             tray.ContextMenuStrip = BuildMenu();
             tray.MouseUp += (s, e) => { if (e.Button == MouseButtons.Left) win.ShowFront(); };
             tray.Visible = true;
@@ -128,7 +128,7 @@ namespace OpenD
             Tools.Proxy = cfg.Proxy;
             if (fresh) ui.Post(o => hud.Pop(null), null);
             // Нет интернета при первом запуске: ждём и пробуем снова, пока компоненты не скачаются.
-            while (!Tools.Ensure(n => { eng.Note = n; }))
+            while (!Tools.Ensure(n => { eng.Note = n; SetTray("Загрузка компонентов" + (Tools.Progress >= 0 ? " " + Tools.Progress + "%" : "…")); }))
             {
                 eng.Note = "Нет связи с GitHub (" + (Tools.LastError ?? "?") + "), повтор…";
                 Thread.Sleep(10000);
@@ -144,10 +144,24 @@ namespace OpenD
             }
             eng.Note = null;
             eng.Start();
+            SetTray(null);
+            if (fresh || firstRun)
+            {
+                ui.Post(o => { hud.Pop("Готово к работе · скопируйте ссылку и нажмите " + cfg.HotkeyText());
+                    tray.ShowBalloonTip(6000, "OpenD готов к работе", "Скопируйте ссылку на видео и нажмите " + cfg.HotkeyText(), ToolTipIcon.Info); }, null);
+            }
             // Первый запуск: сразу предлагаем войти в YouTube, чтобы загрузки шли без «подтвердите, что вы не бот».
             if (firstRun && !File.Exists(LoginWindow.CookieFile))
                 ui.Post(o => { hud.Pop("Войдите в YouTube — это нужно один раз"); Login(); }, null);
             if (eng.Pending() > 0) ui.Post(o => hud.Pop("Продолжаю загрузки"), null);
+        }
+
+        // Подсказка у значка в трее: что сейчас происходит (null — «готов»).
+        void SetTray(string state)
+        {
+            string t = "OpenD — " + (state ?? "готов · " + cfg.HotkeyText());
+            if (t.Length > 63) t = t.Substring(0, 63);
+            ui.Post(o => { tray.Text = t; }, null);
         }
 
         // fromHotkey: true — ответить даже если ссылки нет; false — тихий режим слежения.
