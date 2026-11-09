@@ -21,6 +21,7 @@ DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\OpenD.exe
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
+LicenseFile=risk.txt
 CloseApplications=force
 
 [Languages]

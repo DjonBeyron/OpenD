@@ -270,6 +270,16 @@ namespace OpenD
 
         void Login()
         {
+            if (!cfg.RiskAck)
+            {
+                DialogResult r = MessageBox.Show(
+                    "Вход в YouTube через программу связан с риском: при активном скачивании Google может ограничить или заблокировать этот аккаунт (вместе с почтой и другими сервисами Google).\n\n" +
+                    "• Входите только в ОТДЕЛЬНЫЙ одноразовый аккаунт, не в основной.\n• Не скачивайте массово и круглосуточно.\n• Никому не передавайте файл cookies.txt.\n\n" +
+                    "Я осознаю риски и действую на свой страх и риск.",
+                    "OpenD — предупреждение", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
+                if (r != DialogResult.OK) return;
+                cfg.RiskAck = true; Store.SaveSettings(cfg);
+            }
             LoginWindow.ShowOnce(err =>
             {
                 if (err != null) { MessageBox.Show(err, "OpenD — вход в YouTube", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }

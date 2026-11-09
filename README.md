@@ -10,6 +10,8 @@ Built on open-source tools: [yt-dlp](https://github.com/yt-dlp/yt-dlp) (download
 
 **Recommended: `OpenD-Setup.exe`** — installer with yt-dlp, ffmpeg and Deno already inside (no internet needed on first launch). It also installs WebView2 if missing and opens the YouTube sign-in window on first start.
 
+> ⚠ Signing in to YouTube carries a risk: with heavy downloading Google may restrict or ban the account. Use a separate throwaway account only. The installer and the app ask you to confirm you understand this.
+
 **[Download the latest release](https://github.com/DjonBeyron/OpenD/releases/latest)**
 
 | File | What it is |

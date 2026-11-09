@@ -52,6 +52,7 @@ namespace OpenD
         public uint HudMods = 0x0003;   // Ctrl+Alt
         public int HudKey = 0x48;       // H — показать/скрыть мини-окно
         public bool HudAuto = true;     // показывать мини-окно при загрузках
+        public bool RiskAck;            // пользователь подтвердил, что осознаёт риски входа в YouTube
         public string Proxy;            // необязательно: http://host:port
         public string Cookies = "";   // "", "firefox", "edge", "chrome", "brave" или "file" (cookies.txt рядом с настройками)
         public long LastUpdate;
