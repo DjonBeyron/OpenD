@@ -13,6 +13,8 @@ namespace OpenD
         public static string YtDlp { get { return Path.Combine(Store.Bin, "yt-dlp.exe"); } }
         public static string Ffmpeg { get { return Path.Combine(Store.Bin, "ffmpeg.exe"); } }
         public static string Deno { get { return Path.Combine(Store.Bin, "deno.exe"); } }
+        public static string Proxy;       // из настроек (необязательно)
+        public static string LastError;   // последняя причина сбоя — показывается вместо голого «Жду интернет»
         public static bool Ready { get { return File.Exists(YtDlp) && File.Exists(Ffmpeg); } }
 
         const string UrlYtDlp = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
@@ -24,7 +26,10 @@ namespace OpenD
         {
             try
             {
-                ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;   // TLS 1.2
+                try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072 | (SecurityProtocolType)12288; }   // TLS 1.2 + 1.3
+                catch { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; }
+                ServicePointManager.Expect100Continue = false;
+                LastError = null;
                 Directory.CreateDirectory(Store.Bin);
                 if (!File.Exists(YtDlp)) Fetch(UrlYtDlp, YtDlp, "yt-dlp", status);
                 if (!File.Exists(Ffmpeg))
@@ -52,30 +57,67 @@ namespace OpenD
             catch (Exception e)
             {
                 Log.Error("загрузка компонентов", e);
-                status("Не удалось загрузить компоненты: " + e.Message);
+                Exception r = e; while (r.InnerException != null) r = r.InnerException;
+                LastError = r.Message;
+                status("Не удалось загрузить компоненты: " + r.Message);
                 return false;
             }
         }
 
+        static IWebProxy MakeProxy()
+        {
+            if (!string.IsNullOrEmpty(Proxy)) { try { return new WebProxy(Proxy); } catch { } }
+            IWebProxy p = WebRequest.GetSystemWebProxy();   // системный прокси / VPN-расширения
+            p.Credentials = CredentialCache.DefaultCredentials;
+            return p;
+        }
+
+        // Скачивание с таймаутами (старый WebClient мог висеть бесконечно), 3 попытки, прокси из системы/настроек.
         static void Fetch(string url, string dest, string name, Action<string> status)
         {
             string tmp = dest + ".part";
             Exception err = null;
-            using (WebClient wc = new WebClient())
-            using (ManualResetEvent done = new ManualResetEvent(false))
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                wc.Headers[HttpRequestHeader.UserAgent] = "OpenD";
-                wc.DownloadProgressChanged += (s, e) => status("Загрузка " + name + " " + e.ProgressPercentage + "%");
-                wc.DownloadFileCompleted += (s, e) => { err = e.Error; done.Set(); };
-                status("Загрузка " + name + "…");
-                wc.DownloadFileAsync(new Uri(url), tmp);
-                done.WaitOne();
+                try
+                {
+                    status("Загрузка " + name + "…");
+                    HttpWebRequest rq = (HttpWebRequest)WebRequest.Create(url);
+                    rq.UserAgent = "OpenD";
+                    rq.Timeout = 30000;
+                    rq.ReadWriteTimeout = 30000;
+                    rq.Proxy = MakeProxy();
+                    rq.AllowAutoRedirect = true;
+                    using (HttpWebResponse rs = (HttpWebResponse)rq.GetResponse())
+                    using (Stream src = rs.GetResponseStream())
+                    using (FileStream dst = new FileStream(tmp, FileMode.Create, FileAccess.Write))
+                    {
+                        long total = rs.ContentLength, got = 0;
+                        byte[] buf = new byte[81920];
+                        int n, last = -1;
+                        while ((n = src.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            dst.Write(buf, 0, n);
+                            got += n;
+                            if (total > 0)
+                            {
+                                int pc = (int)(got * 100 / total);
+                                if (pc != last) { last = pc; status("Загрузка " + name + " " + pc + "%"); }
+                            }
+                        }
+                    }
+                    err = null;
+                    break;
+                }
+                catch (Exception e)
+                {
+                    err = e;
+                    Log.Error("загрузка " + name + " (попытка " + attempt + ")", e);
+                    try { File.Delete(tmp); } catch { }
+                    if (attempt < 3) Thread.Sleep(2000 * attempt);
+                }
             }
-            if (err != null)
-            {
-                try { File.Delete(tmp); } catch { }
-                throw err;
-            }
+            if (err != null) throw err;
             if (File.Exists(dest)) File.Delete(dest);
             File.Move(tmp, dest);
         }

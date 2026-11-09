@@ -1,0 +1,57 @@
+name: Build installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build OpenD.exe
+        shell: cmd
+        run: build.cmd
+
+      - name: Download components (bundled into the installer)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force stage\bin, stage\tmp | Out-Null
+          Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile stage\bin\yt-dlp.exe
+          Invoke-WebRequest https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip -OutFile stage\tmp\ffmpeg.zip
+          Invoke-WebRequest https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip -OutFile stage\tmp\deno.zip
+          Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile stage\MicrosoftEdgeWebview2Setup.exe
+          Expand-Archive stage\tmp\ffmpeg.zip stage\tmp\ffmpeg
+          Expand-Archive stage\tmp\deno.zip stage\tmp\deno
+          Get-ChildItem stage\tmp\ffmpeg -Recurse -Include ffmpeg.exe,ffprobe.exe | Copy-Item -Destination stage\bin
+          Copy-Item stage\tmp\deno\deno.exe stage\bin
+          Get-ChildItem stage\bin
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $ver = (Select-String -Path src\AppInfo.cs -Pattern 'AssemblyVersion\("(\d+\.\d+\.\d+)').Matches[0].Groups[1].Value
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVer=$ver" installer\OpenD.iss
+          Compress-Archive dist\OpenD.exe, dist\*.dll -DestinationPath dist\OpenD-win-x64.zip -Force
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenD-Setup
+          path: |
+            dist/OpenD-Setup.exe
+            dist/OpenD-win-x64.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }} dist\OpenD-Setup.exe dist\OpenD-win-x64.zip --title "OpenD ${{ github.ref_name }}" --generate-notes

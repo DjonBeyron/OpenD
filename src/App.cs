@@ -125,12 +125,13 @@ namespace OpenD
         void Prepare()
         {
             bool fresh = !Tools.Ready;
+            Tools.Proxy = cfg.Proxy;
             if (fresh) ui.Post(o => hud.Pop(null), null);
             // Нет интернета при первом запуске: ждём и пробуем снова, пока компоненты не скачаются.
             while (!Tools.Ensure(n => { eng.Note = n; }))
             {
-                eng.Note = "Жду интернет…";
-                Thread.Sleep(20000);
+                eng.Note = "Нет связи с GitHub (" + (Tools.LastError ?? "?") + "), повтор…";
+                Thread.Sleep(10000);
             }
             if (!fresh && DateTime.UtcNow.Ticks - cfg.LastUpdate > TimeSpan.TicksPerDay)
             {
@@ -143,6 +144,9 @@ namespace OpenD
             }
             eng.Note = null;
             eng.Start();
+            // Первый запуск: сразу предлагаем войти в YouTube, чтобы загрузки шли без «подтвердите, что вы не бот».
+            if (firstRun && !File.Exists(LoginWindow.CookieFile))
+                ui.Post(o => { hud.Pop("Войдите в YouTube — это нужно один раз"); Login(); }, null);
             if (eng.Pending() > 0) ui.Post(o => hud.Pop("Продолжаю загрузки"), null);
         }
 
